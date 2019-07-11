@@ -11,6 +11,7 @@ use FOS\RestBundle\Request\ParamFetcherInterface;
 use FOS\RestBundle\View\View;
 use JMS\Serializer\SerializerInterface;
 use Pagerfanta\Pagerfanta;
+use Sensio\Bundle\FrameworkExtraBundle\Configuration\ParamConverter;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\RedirectResponse;
@@ -123,23 +124,31 @@ class ArticleController extends AbstractFOSRestController
     }
 
     /**
-     * @Rest\Get(path = "/{id}", name="article_show")
+     * @Rest\Get(
+     *     path = "/{id}",
+     *     name="article_show",
+     *     requirements={"id"="\d+"}
+     * )
+     * @Rest\View(statusCode=200)
      */
-    public function show(Request $request): View
+    public function showArticle(Request $request, Article $article): View
     {
-        $id = $request->get('id');
-
-        $article = $this->getDoctrine()->getRepository('App\Entity\Article')->find($id);
         return $this->view($article, Response::HTTP_OK);
     }
 
     /**
-     * @Rest\Put(path = "/{id}", name="article_edit")
+     * @Rest\Put(
+     *     path = "/{id}",
+     *     name="article_edit",
+     *     requirements={"id"="\d+"}
+     * )
+     * @Rest\View(statusCode=200)
+     * @ParamConverter("newArticle", converter="fos_rest.request_body")
      */
-    public function edit(Request $request): View
+    public function editArticle(Article $newArticle, Article $article): View
     {
-        $body = $request->getContent();
-        $article = $this->jmsSerializer->deserialize($body, 'App\Entity\Article', 'json');
+        $article->setContent($newArticle->getContent());
+        $article->setTitle($newArticle->getTitle());
 
         $errors = $this->validator->validate($article);
 
@@ -154,9 +163,14 @@ class ArticleController extends AbstractFOSRestController
     }
 
     /**
-     * @Rest\Delete(path = "/{id}", name="article_delete")
+     * @Rest\View(statusCode=204)
+     * @Rest\Delete(
+     *     path = "/{id}",
+     *     name="article_delete",
+     *     requirements={"id"="\d+"}
+     * )
      */
-    public function delete(Request $request, Article $article)
+    public function delete(Article $article)
     {
         $entityManager = $this->getDoctrine()->getManager();
         $entityManager->remove($article);

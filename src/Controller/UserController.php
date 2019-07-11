@@ -5,92 +5,166 @@ namespace App\Controller;
 use App\Entity\User;
 use App\Form\UserType;
 use App\Repository\UserRepository;
+use FOS\RestBundle\Controller\AbstractFOSRestController;
+use JMS\Serializer\Serializer;
+use JMS\Serializer\SerializerInterface;
+use Lexik\Bundle\JWTAuthenticationBundle\Encoder\JWTEncoderInterface;
+use Sensio\Bundle\FrameworkExtraBundle\Configuration\ParamConverter;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
+use FOS\RestBundle\Controller\Annotations as Rest;
+use FOS\RestBundle\View\View;
+use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 /**
- * @Route("/user")
+ * @Route("/")
  */
-class UserController extends AbstractController
+class UserController extends AbstractFOSRestController
 {
     /**
-     * @Route("/", name="user_index", methods={"GET"})
+     * @var ValidatorInterface
      */
-    public function index(UserRepository $userRepository): Response
+    protected $validator;
+
+    /**
+     * @var SerializerInterface
+     */
+    protected $jmsSerializer;
+
+    /**
+     * @var JWTEncoderInterface
+     */
+    protected $jwtEncoder;
+
+    /**
+     * @var UserRepository
+     */
+    protected $userRepository;
+
+    /**
+     * UserController constructor.
+     * @param ValidatorInterface $validator
+     * @param SerializerInterface $jmsSerializer
+     * @param JWTEncoderInterface $jwtEncoder
+     * @param UserRepository $userRepository
+     */
+    public function __construct(ValidatorInterface $validator, SerializerInterface $jmsSerializer, JWTEncoderInterface $jwtEncoder, UserRepository $userRepository)
     {
-        return $this->render('user/index.html.twig', [
-            'users' => $userRepository->findAll(),
-        ]);
+        $this->validator = $validator;
+        $this->jmsSerializer = $jmsSerializer;
+        $this->jwtEncoder = $jwtEncoder;
+        $this->userRepository = $userRepository;
+    }
+
+
+    /**
+     * @Rest\Post(path = "login", name="userlogin")
+     *
+     */
+    public function userLogin(Request $request, UserRepository $userRepository)
+    {
+        $data = json_decode($request->getContent(), true)?: [];
+
+        $user = $userRepository->findOneBy(['email' => $data['email']]);
+
+
+        $token = $this->jwtEncoder->encode(['email' => $data['email']]);
+
+        $message = "You are successfully authenticated!";
+
+        return $this->view(['message' => $message, 'token' => $token], Response::HTTP_OK);
     }
 
     /**
-     * @Route("/new", name="user_new", methods={"GET","POST"})
+     * @Rest\Post(path = "user", name="user_create")
+     * @Rest\View(StatusCode = 201)
      */
-    public function new(Request $request): Response
+    public function createUser(Request $request): View
     {
-        $user = new User();
-        $form = $this->createForm(UserType::class, $user);
-        $form->handleRequest($request);
+        $validator = $this->validator;
+        $jmsSerializer = $this->jmsSerializer;
 
-        if ($form->isSubmitted() && $form->isValid()) {
-            $entityManager = $this->getDoctrine()->getManager();
-            $entityManager->persist($user);
-            $entityManager->flush();
+        $data = $request->getContent();
+        $user = $jmsSerializer->deserialize($data, 'App\Entity\User', 'json');
 
-            return $this->redirectToRoute('user_index');
+        $errors = $validator->validate($user);
+
+        if (count($errors)) {
+            return $this->view($errors, Response::HTTP_BAD_REQUEST);
         }
 
-        return $this->render('user/new.html.twig', [
-            'user' => $user,
-            'form' => $form->createView(),
-        ]);
+        $em = $this->getDoctrine()->getManager();
+        $em->persist($user);
+        $em->flush();
+
+        return $this->view($user, Response::HTTP_CREATED);
     }
 
     /**
-     * @Route("/{id}", name="user_show", methods={"GET"})
+     * @Rest\View(statusCode=200)
+     * @Rest\Get(
+     *     path = "user/{id}",
+     *     name="user_show",
+     *     requirements={"id"="\d+"}
+     * )
      */
-    public function show(User $user): Response
+    public function showUser(User $user): View
     {
-        return $this->render('user/show.html.twig', [
-            'user' => $user,
-        ]);
+        return $this->view($user, Response::HTTP_OK);
     }
 
     /**
-     * @Route("/{id}/edit", name="user_edit", methods={"GET","POST"})
+     * @Rest\Get(path = "user", name="user_list")
      */
-    public function edit(Request $request, User $user): Response
+    public function userList(): View
     {
-        $form = $this->createForm(UserType::class, $user);
-        $form->handleRequest($request);
+        $users = $this->userRepository->findAll();
+        return $this->view($users, Response::HTTP_OK);
+    }
 
-        if ($form->isSubmitted() && $form->isValid()) {
-            $this->getDoctrine()->getManager()->flush();
+    /**
+     * @Rest\View(statusCode=200)
+     * @Rest\Put(
+     *     path = "user/{id}",
+     *     name="user_edit",
+     *     requirements={"id"="\d+"}
+     * )
+     * @ParamConverter("newUser", converter = "fos_rest.request_body")
+     */
+    public function editUser(Request $request, User $newUser, User $user): View
+    {
+        $errors = $this->validator->validate($newUser);
 
-            return $this->redirectToRoute('user_index', [
-                'id' => $user->getId(),
-            ]);
+        if (count($errors)) {
+            return $this->view($errors, Response::HTTP_BAD_REQUEST);
         }
 
-        return $this->render('user/edit.html.twig', [
-            'user' => $user,
-            'form' => $form->createView(),
-        ]);
+        $user->setUsername($newUser->getUsername());
+        $user->setEmail($newUser->getEmail());
+        $user->setPassword($newUser->getPassword());
+
+        $em = $this->getDoctrine()->getManager();
+        $em->flush();
+
+        return $this->view($user, Response::HTTP_OK);
     }
 
     /**
-     * @Route("/{id}", name="user_delete", methods={"DELETE"})
+     * @Rest\Delete(
+     *     path = "user/{id}",
+     *     name="user_delete",
+     *     requirements = {"id"="\d+"}
+     * )
+     * @Rest\View(statusCode=204)
      */
-    public function delete(Request $request, User $user): Response
+    public function delete(Request $request, User $user): View
     {
-        if ($this->isCsrfTokenValid('delete'.$user->getId(), $request->request->get('_token'))) {
-            $entityManager = $this->getDoctrine()->getManager();
-            $entityManager->remove($user);
-            $entityManager->flush();
-        }
-
-        return $this->redirectToRoute('user_index');
+        $em = $this->getDoctrine()->getManager();
+        $em->remove($user);
+        $em->flush();
+        $message = "The user has been successfully deleted!";
+        return $this->view($message, Response::HTTP_OK);
     }
 }
