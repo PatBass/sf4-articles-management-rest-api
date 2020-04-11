@@ -1,0 +1,52 @@
+Install Symfony 4 project
+
+/>usr/local/bin/composer.phar create-project symfony/skeleton api032020 ^4.3
+
+composer require server
+-
+
+./bin/console server:run
+-
+
+composer require profiler
+-
+
+composer require orm
+-
+
+Configurer le .env :
+DATABASE_URL=mysql://root:root@127.0.0.1:3306/api
+-
+
+./bin/console doctrine:database:create
+Données de test
+composer require orm-fixtures --dev
+-
+
+composer make:fixtures
+LE CACHE
+
+composer req symfony/cache
+
+TESTING
+
+composer require --dev "symfony/phpunit-bridge:*"
+
+php bin/phpunit (installation des dépendances de phpunit)
+TEST FONCTIONNEL AVEC BEHAT : composer require --dev behat
+
+TEST FONCTIONNEL SANS BEHAT
+
+composer require --dev symfony/browser-kit symfony/css-selector
+
+
+
+=============== APPEL API météo OpenWeatherMap
+
+Pour pouvoir y faire appel, il faut créer une clé d'API qu'il faudra ajouter en paramètre GET de chacune des requêtes faites à l'API. Rendez-vous à l'adresse suivante pour vous en créer une et la récupérer : http://openweathermap.org/appid. Sans cette clé, votre API ne sera pas autorisée à communiquer avec OpenWeatherMap. :'(
+
+
+
+Une fois la clé d'API créée, pour récupérer pour les informations de la météo pour la ville de Paris, il suffit de faire une requête GET sur l'adresse HTTP suivante :
+
+http://api.openweathermap.org/data/2.5/weather?q=Paris&APPID=votre_clé_api
